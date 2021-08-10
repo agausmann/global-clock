@@ -1,5 +1,6 @@
 use crate::GraphicsContext;
 use bytemuck::{Pod, Zeroable};
+use chrono::{DateTime, Timelike, Utc};
 use once_cell::sync::Lazy;
 use std::convert::TryInto;
 use std::f32::consts::TAU;
@@ -284,9 +285,16 @@ impl Globe {
         }
     }
 
-    pub fn draw(&mut self, encoder: &mut wgpu::CommandEncoder, frame_view: &wgpu::TextureView) {
-        self.uniforms.rotation = (self.uniforms.rotation + TAU / 2000.0) % TAU;
+    pub fn set_date(&mut self, time: &DateTime<Utc>) {
+        const SECONDS_PER_DAY: f32 = 86400.0;
+        // Offset to compensate for angle 0 being at 6:00 PM UTC
+        const ANGLE_OFFSET: f32 = -TAU / 4.0;
 
+        self.uniforms.rotation =
+            (time.num_seconds_from_midnight() as f32) / SECONDS_PER_DAY * TAU + ANGLE_OFFSET;
+    }
+
+    pub fn draw(&self, encoder: &mut wgpu::CommandEncoder, frame_view: &wgpu::TextureView) {
         // Update uniforms
         self.gfx
             .queue

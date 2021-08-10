@@ -2,6 +2,7 @@ mod globe;
 
 use self::globe::Globe;
 use anyhow::Context;
+use chrono::Utc;
 use pollster::block_on;
 use std::sync::Arc;
 use winit::dpi::LogicalSize;
@@ -74,6 +75,10 @@ impl App {
         })
     }
 
+    fn update(&mut self) {
+        self.globe.set_date(&Utc::now());
+    }
+
     fn redraw(&mut self) -> anyhow::Result<()> {
         let frame = loop {
             match self.swap_chain().get_current_frame() {
@@ -137,6 +142,7 @@ fn main() -> anyhow::Result<()> {
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::RedrawRequested(..) => {
+            app.update();
             app.redraw().unwrap();
         }
         Event::WindowEvent { event, .. } => match event {
