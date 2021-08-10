@@ -21,7 +21,7 @@ pub struct GraphicsContextInner {
 
 impl GraphicsContextInner {
     async fn new(window: Window) -> anyhow::Result<Self> {
-        let instance = wgpu::Instance::new(wgpu::BackendBit::all());
+        let instance = wgpu::Instance::new(wgpu::BackendBit::PRIMARY);
         let surface = unsafe { instance.create_surface(&window) };
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {

@@ -54,12 +54,18 @@ const INDICES: [u16; 6] = [0, 1, 2, 2, 3, 0];
 #[derive(Clone, Copy, Pod, Zeroable)]
 #[repr(C)]
 struct Uniforms {
-    angle: f32,
+    rotation: f32,
+    min_latitude: f32,
+    max_latitude: f32,
 }
 
 impl Default for Uniforms {
     fn default() -> Self {
-        Self { angle: 0.0 }
+        Self {
+            rotation: 0.0,
+            min_latitude: -TAU / 4.0,
+            max_latitude: TAU / 4.0,
+        }
     }
 }
 
@@ -279,7 +285,7 @@ impl Globe {
     }
 
     pub fn draw(&mut self, encoder: &mut wgpu::CommandEncoder, frame_view: &wgpu::TextureView) {
-        self.uniforms.angle = (self.uniforms.angle + TAU / 2000.0) % TAU;
+        self.uniforms.rotation = (self.uniforms.rotation + TAU / 2000.0) % TAU;
 
         // Update uniforms
         self.gfx
