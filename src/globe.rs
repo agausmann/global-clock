@@ -199,7 +199,7 @@ impl Globe {
             label: Some("Globe.sampler"),
             address_mode_u: wgpu::AddressMode::Repeat,
             mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
 
