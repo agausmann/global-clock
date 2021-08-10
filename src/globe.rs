@@ -2,6 +2,7 @@ use crate::GraphicsContext;
 use bytemuck::{Pod, Zeroable};
 use once_cell::sync::Lazy;
 use std::convert::TryInto;
+use std::f32::consts::TAU;
 use std::num::NonZeroU32;
 use wgpu::util::DeviceExt;
 
@@ -50,12 +51,27 @@ const VERTICES: [Vertex; 4] = [
 
 const INDICES: [u16; 6] = [0, 1, 2, 2, 3, 0];
 
+#[derive(Clone, Copy, Pod, Zeroable)]
+#[repr(C)]
+struct Uniforms {
+    angle: f32,
+}
+
+impl Default for Uniforms {
+    fn default() -> Self {
+        Self { angle: 0.0 }
+    }
+}
+
 pub struct Globe {
     gfx: GraphicsContext,
     render_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
+    uniform_buffer: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
+
+    uniforms: Uniforms,
 }
 
 impl Globe {
@@ -68,10 +84,10 @@ impl Globe {
                         wgpu::BindGroupLayoutEntry {
                             binding: 0,
                             visibility: wgpu::ShaderStage::FRAGMENT,
-                            ty: wgpu::BindingType::Texture {
-                                multisampled: false,
-                                view_dimension: wgpu::TextureViewDimension::D2,
-                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Uniform,
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
                             },
                             count: None,
                         },
@@ -81,6 +97,16 @@ impl Globe {
                             ty: wgpu::BindingType::Sampler {
                                 comparison: false,
                                 filtering: true,
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 2,
+                            visibility: wgpu::ShaderStage::FRAGMENT,
+                            ty: wgpu::BindingType::Texture {
+                                multisampled: false,
+                                view_dimension: wgpu::TextureViewDimension::D2,
+                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
                             },
                             count: None,
                         },
@@ -145,6 +171,13 @@ impl Globe {
                 usage: wgpu::BufferUsage::INDEX,
             });
 
+        let uniform_buffer = gfx.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Globe.uniform_buffer"),
+            size: std::mem::size_of::<Uniforms>().try_into().unwrap(),
+            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         let globe_image = image::load_from_memory(include_bytes!("textures/globe.jpg"))
             .expect("failed to load texture")
             .into_rgba8();
@@ -190,11 +223,15 @@ impl Globe {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&texture_view),
+                    resource: uniform_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&texture_view),
                 },
             ],
         });
@@ -204,11 +241,20 @@ impl Globe {
             render_pipeline,
             vertex_buffer,
             index_buffer,
+            uniform_buffer,
             bind_group,
+            uniforms: Default::default(),
         }
     }
 
-    pub fn draw(&self, encoder: &mut wgpu::CommandEncoder, frame_view: &wgpu::TextureView) {
+    pub fn draw(&mut self, encoder: &mut wgpu::CommandEncoder, frame_view: &wgpu::TextureView) {
+        self.uniforms.angle = (self.uniforms.angle + TAU / 2000.0) % TAU;
+
+        // Update uniforms
+        self.gfx
+            .queue
+            .write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&self.uniforms));
+
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Globe.render_pass"),
             color_attachments: &[wgpu::RenderPassColorAttachment {
