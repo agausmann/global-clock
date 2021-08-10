@@ -110,6 +110,16 @@ impl Globe {
                             },
                             count: None,
                         },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 3,
+                            visibility: wgpu::ShaderStage::FRAGMENT,
+                            ty: wgpu::BindingType::Texture {
+                                multisampled: false,
+                                view_dimension: wgpu::TextureViewDimension::D2,
+                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            },
+                            count: None,
+                        },
                     ],
                 });
         let pipeline_layout = gfx
@@ -178,38 +188,6 @@ impl Globe {
             mapped_at_creation: false,
         });
 
-        let globe_image = image::load_from_memory(include_bytes!("textures/globe.jpg"))
-            .expect("failed to load texture")
-            .into_rgba8();
-        let size = wgpu::Extent3d {
-            width: globe_image.width(),
-            height: globe_image.height(),
-            ..Default::default()
-        };
-        let texture = gfx.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Globe.texture"),
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
-        });
-        gfx.queue.write_texture(
-            wgpu::ImageCopyTexture {
-                texture: &texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-            },
-            &globe_image,
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: NonZeroU32::new(size.width * 4),
-                rows_per_image: NonZeroU32::new(size.height),
-            },
-            size,
-        );
-        let texture_view = texture.create_view(&Default::default());
         let sampler = gfx.device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("Globe.sampler"),
             address_mode_u: wgpu::AddressMode::Repeat,
@@ -217,6 +195,55 @@ impl Globe {
             min_filter: wgpu::FilterMode::Nearest,
             ..Default::default()
         });
+
+        fn load_texture(gfx: &GraphicsContext, bytes: &[u8], label: &str) -> wgpu::Texture {
+            let image = image::load_from_memory(bytes)
+                .expect("failed to load texture")
+                .into_rgba8();
+            let size = wgpu::Extent3d {
+                width: image.width(),
+                height: image.height(),
+                ..Default::default()
+            };
+            let texture = gfx.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(label),
+                size,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
+            });
+            gfx.queue.write_texture(
+                wgpu::ImageCopyTexture {
+                    texture: &texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                },
+                &image,
+                wgpu::ImageDataLayout {
+                    offset: 0,
+                    bytes_per_row: NonZeroU32::new(size.width * 4),
+                    rows_per_image: NonZeroU32::new(size.height),
+                },
+                size,
+            );
+            texture
+        }
+
+        let day_texture = load_texture(
+            gfx,
+            include_bytes!("textures/globe_day.jpg"),
+            "Globe.day_texture",
+        );
+        let day_texture_view = day_texture.create_view(&Default::default());
+        let night_texture = load_texture(
+            gfx,
+            include_bytes!("textures/globe_night.jpg"),
+            "Globe.night_texture",
+        );
+        let night_texture_view = night_texture.create_view(&Default::default());
+
         let bind_group = gfx.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Globe.bind_group"),
             layout: &bind_group_layout,
@@ -231,7 +258,11 @@ impl Globe {
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: wgpu::BindingResource::TextureView(&texture_view),
+                    resource: wgpu::BindingResource::TextureView(&day_texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(&night_texture_view),
                 },
             ],
         });
