@@ -1,4 +1,22 @@
 [[block]]
+struct Uniforms {
+    local_transform: mat4x4<f32>;
+    rotation: f32;
+    axial_tilt: f32;
+    min_latitude: f32;
+    max_latitude: f32;
+};
+
+[[group(0), binding(0)]]
+var<uniform> uniforms: Uniforms;
+[[group(0), binding(1)]]
+var globe_sampler: sampler;
+[[group(0), binding(2)]]
+var globe_day_texture: texture_2d<f32>;
+[[group(0), binding(3)]]
+var globe_night_texture: texture_2d<f32>;
+
+[[block]]
 struct Viewport {
     proj: mat4x4<f32>;
 };
@@ -19,27 +37,10 @@ struct VertexOutput {
 [[stage(vertex)]]
 fn main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
-    out.position = viewport.proj * vec4<f32>(in.position, 0.0, 1.0);
+    out.position = viewport.proj * uniforms.local_transform * vec4<f32>(in.position, 0.0, 1.0);
     out.uv = in.uv;
     return out;
 }
-
-[[block]]
-struct Uniforms {
-    rotation: f32;
-    axial_tilt: f32;
-    min_latitude: f32;
-    max_latitude: f32;
-};
-
-[[group(0), binding(0)]]
-var<uniform> uniforms: Uniforms;
-[[group(0), binding(1)]]
-var globe_sampler: sampler;
-[[group(0), binding(2)]]
-var globe_day_texture: texture_2d<f32>;
-[[group(0), binding(3)]]
-var globe_night_texture: texture_2d<f32>;
 
 var TAU: f32 = 6.283185;
 

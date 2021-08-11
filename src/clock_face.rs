@@ -2,12 +2,9 @@ use crate::viewport::Viewport;
 use crate::GraphicsContext;
 use anyhow::Context;
 use bytemuck::{Pod, Zeroable};
-use chrono::{DateTime, Datelike, Timelike, Utc};
-use glam::{Mat4, Vec3};
 use once_cell::sync::Lazy;
 use std::convert::TryInto;
 use std::f32::consts::TAU;
-use std::num::NonZeroU32;
 use wgpu::util::DeviceExt;
 
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -55,56 +52,96 @@ const VERTICES: [Vertex; 4] = [
 
 const INDICES: [u16; 6] = [0, 1, 2, 2, 3, 0];
 
-#[derive(Clone, Copy, Pod, Zeroable)]
-#[repr(C)]
-struct Uniforms {
-    local_transform: [[f32; 4]; 4],
-    rotation: f32,
-    axial_tilt: f32,
-    min_latitude: f32,
-    max_latitude: f32,
-}
+const TEXTURE_WIDTH: u32 = 1024;
 
-impl Default for Uniforms {
-    fn default() -> Self {
-        Self {
-            local_transform: Mat4::from_scale(Vec3::splat(0.8)).to_cols_array_2d(),
-            rotation: 0.0,
-            axial_tilt: 0.0,
-            min_latitude: -TAU / 4.0,
-            max_latitude: TAU / 4.0,
+fn render_clock_face() -> tiny_skia::Pixmap {
+    use tiny_skia::*;
+
+    let mut paint = Paint::default();
+    paint.set_color(Color::from_rgba(1.0, 1.0, 1.0, 0.5).unwrap());
+    paint.anti_alias = true;
+    paint.blend_mode = BlendMode::Source;
+
+    let mut major_stroke = Stroke::default();
+    major_stroke.width = 0.02;
+    major_stroke.line_cap = LineCap::Round;
+
+    let mut minor_stroke = Stroke::default();
+    minor_stroke.width = 0.015;
+    minor_stroke.line_cap = LineCap::Round;
+
+    let mut pixmap = Pixmap::new(TEXTURE_WIDTH, TEXTURE_WIDTH).unwrap();
+    // Transform from normalized coordinates (-1.0..1.0) to pixels
+    let transform = Transform::identity()
+        .post_translate(1.0, 1.0)
+        .post_scale(TEXTURE_WIDTH as f32 / 2.0, TEXTURE_WIDTH as f32 / 2.0);
+
+    let major_ticks = 4;
+    let major_inner_radius = 0.85;
+    let major_outer_radius = 0.95;
+
+    let minor_ticks = 5;
+    let minor_inner_radius = 0.9;
+    let minor_outer_radius = 0.95;
+
+    let major_path = {
+        let mut pb = PathBuilder::new();
+
+        for tick in 0..major_ticks {
+            let angle = (tick as f32) / (major_ticks as f32) * TAU;
+            pb.move_to(
+                major_inner_radius * angle.cos(),
+                major_inner_radius * angle.sin(),
+            );
+            pb.line_to(
+                major_outer_radius * angle.cos(),
+                major_outer_radius * angle.sin(),
+            );
         }
-    }
+        pb.finish().unwrap()
+    };
+
+    let minor_path = {
+        let mut pb = PathBuilder::new();
+
+        for tick in 0..major_ticks {
+            let start_angle = (tick as f32) / (major_ticks as f32) * TAU;
+            for minor_tick in 1..=minor_ticks {
+                let angle = start_angle
+                    + (minor_tick as f32) / (minor_ticks as f32 + 1.0) / (major_ticks as f32) * TAU;
+
+                pb.move_to(
+                    minor_inner_radius * angle.cos(),
+                    minor_inner_radius * angle.sin(),
+                );
+                pb.line_to(
+                    minor_outer_radius * angle.cos(),
+                    minor_outer_radius * angle.sin(),
+                );
+            }
+        }
+        pb.finish().unwrap()
+    };
+
+    pixmap.stroke_path(&major_path, &paint, &major_stroke, transform, None);
+    pixmap.stroke_path(&minor_path, &paint, &minor_stroke, transform, None);
+    pixmap
 }
 
-pub struct Globe {
-    gfx: GraphicsContext,
+pub struct ClockFace {
     render_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
-    uniform_buffer: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
-
-    uniforms: Uniforms,
 }
 
-impl Globe {
+impl ClockFace {
     pub fn new(gfx: &GraphicsContext, viewport: &Viewport) -> anyhow::Result<Self> {
         let bind_group_layout =
             gfx.device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: Some("Globe.bind_group_layout"),
+                    label: Some("ClockFace.bind_group_layout"),
                     entries: &[
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 0,
-                            visibility: wgpu::ShaderStage::VERTEX | wgpu::ShaderStage::FRAGMENT,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Uniform,
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        },
                         wgpu::BindGroupLayoutEntry {
                             binding: 1,
                             visibility: wgpu::ShaderStage::FRAGMENT,
@@ -124,32 +161,22 @@ impl Globe {
                             },
                             count: None,
                         },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 3,
-                            visibility: wgpu::ShaderStage::FRAGMENT,
-                            ty: wgpu::BindingType::Texture {
-                                multisampled: false,
-                                view_dimension: wgpu::TextureViewDimension::D2,
-                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            },
-                            count: None,
-                        },
                     ],
                 });
         let pipeline_layout = gfx
             .device
             .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Globe.pipeline_layout"),
+                label: Some("ClockFace.pipeline_layout"),
                 bind_group_layouts: &[&bind_group_layout, viewport.bind_group_layout()],
                 push_constant_ranges: &[],
             });
 
-        let shader_source = std::fs::read_to_string("assets/shaders/globe.wgsl")
+        let shader_source = std::fs::read_to_string("assets/shaders/clock_face.wgsl")
             .context("failed to load shader from disk")?;
         let shader_module = gfx
             .device
             .create_shader_module(&wgpu::ShaderModuleDescriptor {
-                label: Some("Globe.shader_module"),
+                label: Some("ClockFace.shader_module"),
                 source: wgpu::ShaderSource::Wgsl(shader_source.into()),
                 flags: wgpu::ShaderFlags::VALIDATION,
             });
@@ -157,7 +184,7 @@ impl Globe {
         let render_pipeline = gfx
             .device
             .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("Globe.render_pipeline"),
+                label: Some("ClockFace.render_pipeline"),
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &shader_module,
@@ -180,7 +207,7 @@ impl Globe {
                     entry_point: "main",
                     targets: &[wgpu::ColorTargetState {
                         format: gfx.render_format,
-                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                        blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
                         write_mask: wgpu::ColorWrite::ALL,
                     }],
                 }),
@@ -189,132 +216,66 @@ impl Globe {
         let vertex_buffer = gfx
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Globe.vertex_buffer"),
+                label: Some("ClockFace.vertex_buffer"),
                 contents: bytemuck::cast_slice(&VERTICES),
                 usage: wgpu::BufferUsage::VERTEX,
             });
         let index_buffer = gfx
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Globe.index_buffer"),
+                label: Some("ClockFace.index_buffer"),
                 contents: bytemuck::cast_slice(&INDICES),
                 usage: wgpu::BufferUsage::INDEX,
             });
 
-        let uniform_buffer = gfx.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Globe.uniform_buffer"),
-            size: std::mem::size_of::<Uniforms>().try_into().unwrap(),
-            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-            mapped_at_creation: false,
-        });
-
         let sampler = gfx.device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Globe.sampler"),
+            label: Some("ClockFace.sampler"),
             address_mode_u: wgpu::AddressMode::Repeat,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-
-        fn load_texture(
-            gfx: &GraphicsContext,
-            path: &str,
-            label: &str,
-        ) -> anyhow::Result<wgpu::Texture> {
-            let image_source = std::fs::read(path).context("failed to load texture from disk")?;
-            let image = image::load_from_memory(&image_source)
-                .context("failed to parse texture")?
-                .into_rgba8();
-            let size = wgpu::Extent3d {
-                width: image.width(),
-                height: image.height(),
-                ..Default::default()
-            };
-            let texture = gfx.device.create_texture(&wgpu::TextureDescriptor {
-                label: Some(label),
-                size,
+        let pixmap = render_clock_face();
+        let texture = gfx.device.create_texture_with_data(
+            &gfx.queue,
+            &wgpu::TextureDescriptor {
+                label: Some("ClockFace.texture"),
+                size: wgpu::Extent3d {
+                    width: TEXTURE_WIDTH,
+                    height: TEXTURE_WIDTH,
+                    ..Default::default()
+                },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
-            });
-            gfx.queue.write_texture(
-                wgpu::ImageCopyTexture {
-                    texture: &texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                },
-                &image,
-                wgpu::ImageDataLayout {
-                    offset: 0,
-                    bytes_per_row: NonZeroU32::new(size.width * 4),
-                    rows_per_image: NonZeroU32::new(size.height),
-                },
-                size,
-            );
-            Ok(texture)
-        }
-
-        let day_texture = load_texture(gfx, "assets/textures/globe_day.jpg", "Globe.day_texture")?;
-        let day_texture_view = day_texture.create_view(&Default::default());
-        let night_texture = load_texture(
-            gfx,
-            "assets/textures/globe_night.jpg",
-            "Globe.night_texture",
-        )?;
-        let night_texture_view = night_texture.create_view(&Default::default());
+                usage: wgpu::TextureUsage::COPY_DST | wgpu::TextureUsage::SAMPLED,
+            },
+            bytemuck::cast_slice(pixmap.pixels()),
+        );
+        let texture_view = texture.create_view(&Default::default());
 
         let bind_group = gfx.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Globe.bind_group"),
+            label: Some("ClockFace.bind_group"),
             layout: &bind_group_layout,
             entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: uniform_buffer.as_entire_binding(),
-                },
                 wgpu::BindGroupEntry {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(&sampler),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: wgpu::BindingResource::TextureView(&day_texture_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::TextureView(&night_texture_view),
+                    resource: wgpu::BindingResource::TextureView(&texture_view),
                 },
             ],
         });
 
         Ok(Self {
-            gfx: gfx.clone(),
             render_pipeline,
             vertex_buffer,
             index_buffer,
-            uniform_buffer,
             bind_group,
-            uniforms: Default::default(),
         })
-    }
-
-    pub fn set_date(&mut self, date: &DateTime<Utc>) {
-        const SECONDS_PER_DAY: f32 = 86400.0;
-        // Offset to compensate for angle 0 being at 6:00 PM UTC
-        const ANGLE_OFFSET: f32 = -TAU / 4.0;
-
-        self.uniforms.rotation =
-            (date.num_seconds_from_midnight() as f32) / SECONDS_PER_DAY * TAU + ANGLE_OFFSET;
-
-        // Don't care about leap years, this is precise enough.
-        const DAYS_PER_YEAR: f32 = 365.0;
-        // Day 0 -> roughly March 20 (I'm too lazy to calculate this more precisely)
-        const EQUINOX_OFFSET: f32 = -78.0;
-        const MAX_AXIAL_TILT: f32 = 23.4 / 360.0 * TAU;
-
-        self.uniforms.axial_tilt = MAX_AXIAL_TILT
-            * ((date.ordinal0() as f32 + EQUINOX_OFFSET) / DAYS_PER_YEAR * TAU).sin();
     }
 
     pub fn draw(
@@ -323,13 +284,8 @@ impl Globe {
         frame_view: &wgpu::TextureView,
         viewport: &Viewport,
     ) {
-        // Update uniforms
-        self.gfx
-            .queue
-            .write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&self.uniforms));
-
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("Globe.render_pass"),
+            label: Some("ClockFace.render_pass"),
             color_attachments: &[wgpu::RenderPassColorAttachment {
                 view: frame_view,
                 resolve_target: None,

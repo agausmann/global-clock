@@ -1,8 +1,10 @@
 mod background;
+mod clock_face;
 mod globe;
 mod viewport;
 
 use self::background::Background;
+use self::clock_face::ClockFace;
 use self::globe::Globe;
 use self::viewport::Viewport;
 use anyhow::Context;
@@ -66,6 +68,7 @@ struct App {
     viewport: Viewport,
     background: Background,
     globe: Globe,
+    clock_face: ClockFace,
     swap_chain: Option<wgpu::SwapChain>,
 }
 
@@ -75,12 +78,14 @@ impl App {
         let viewport = Viewport::new(&gfx);
         let background = Background::new(&gfx);
         let globe = Globe::new(&gfx, &viewport)?;
+        let clock_face = ClockFace::new(&gfx, &viewport)?;
 
         Ok(Self {
             gfx,
             viewport,
             background,
             globe,
+            clock_face,
             swap_chain: None,
         })
     }
@@ -109,6 +114,8 @@ impl App {
 
         self.background.draw(&mut encoder, &frame.view);
         self.globe.draw(&mut encoder, &frame.view, &self.viewport);
+        self.clock_face
+            .draw(&mut encoder, &frame.view, &self.viewport);
         self.gfx.queue.submit([encoder.finish()]);
 
         Ok(())
@@ -116,7 +123,7 @@ impl App {
 
     fn window_resized(&mut self) {
         self.swap_chain = None;
-        self.viewport.window_resized()
+        self.viewport.window_resized();
     }
 
     fn swap_chain(&mut self) -> &wgpu::SwapChain {

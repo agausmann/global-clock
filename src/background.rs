@@ -3,7 +3,7 @@ use crate::GraphicsContext;
 pub struct Background {}
 
 impl Background {
-    pub fn new(gfx: &GraphicsContext) -> Self {
+    pub fn new(_gfx: &GraphicsContext) -> Self {
         Self {}
     }
 
