@@ -1,6 +1,6 @@
 use crate::GraphicsContext;
 use bytemuck::{Pod, Zeroable};
-use chrono::{DateTime, Timelike, Utc};
+use chrono::{DateTime, Datelike, Timelike, Utc};
 use once_cell::sync::Lazy;
 use std::convert::TryInto;
 use std::f32::consts::TAU;
@@ -56,6 +56,7 @@ const INDICES: [u16; 6] = [0, 1, 2, 2, 3, 0];
 #[repr(C)]
 struct Uniforms {
     rotation: f32,
+    axial_tilt: f32,
     min_latitude: f32,
     max_latitude: f32,
 }
@@ -64,6 +65,7 @@ impl Default for Uniforms {
     fn default() -> Self {
         Self {
             rotation: 0.0,
+            axial_tilt: 0.0,
             min_latitude: -TAU / 4.0,
             max_latitude: TAU / 4.0,
         }
@@ -285,13 +287,22 @@ impl Globe {
         }
     }
 
-    pub fn set_date(&mut self, time: &DateTime<Utc>) {
+    pub fn set_date(&mut self, date: &DateTime<Utc>) {
         const SECONDS_PER_DAY: f32 = 86400.0;
         // Offset to compensate for angle 0 being at 6:00 PM UTC
         const ANGLE_OFFSET: f32 = -TAU / 4.0;
 
         self.uniforms.rotation =
-            (time.num_seconds_from_midnight() as f32) / SECONDS_PER_DAY * TAU + ANGLE_OFFSET;
+            (date.num_seconds_from_midnight() as f32) / SECONDS_PER_DAY * TAU + ANGLE_OFFSET;
+
+        // Don't care about leap years, this is precise enough.
+        const DAYS_PER_YEAR: f32 = 365.0;
+        // Day 0 -> roughly March 20 (I'm too lazy to calculate this more precisely)
+        const EQUINOX_OFFSET: f32 = -78.0;
+        const MAX_AXIAL_TILT: f32 = 23.4 / 360.0 * TAU;
+
+        self.uniforms.axial_tilt = MAX_AXIAL_TILT
+            * ((date.ordinal0() as f32 + EQUINOX_OFFSET) / DAYS_PER_YEAR * TAU).sin();
     }
 
     pub fn draw(&self, encoder: &mut wgpu::CommandEncoder, frame_view: &wgpu::TextureView) {

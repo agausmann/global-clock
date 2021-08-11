@@ -19,6 +19,7 @@ fn main(in: VertexInput) -> VertexOutput {
 [[block]]
 struct Uniforms {
     rotation: f32;
+    axial_tilt: f32;
     min_latitude: f32;
     max_latitude: f32;
 };
@@ -50,33 +51,29 @@ fn main(in: VertexOutput) -> [[location(0)]] vec4<f32> {
     var y: f32 = 1.0 - in.uv.y * 2.0;
 
     var radius: f32 = sqrt(x * x + y * y);
-    // Positive remainder
     var abs_angle: f32 = -atan2(y, x);
 
-    // Note this is in radians, not degrees
-    var lon_lat: vec2<f32> = vec2<f32>(abs_angle, lerp(radius, uniforms.min_latitude, uniforms.max_latitude));
+    // Note these are in radians, not degrees
+    var longitude: f32 = abs_angle;
+    var latitude: f32 = lerp(radius, uniforms.min_latitude, uniforms.max_latitude);
 
+    // 3D space for light calculations:
+    // - Equator lies in the XY plane
+    // - Positive Z is toward the north pole
+    // - Positive Y is toward the sun
     var globe_ray: vec3<f32> = vec3<f32>(
-        cos(lon_lat.y) * cos(lon_lat.x),
-        cos(lon_lat.y) * sin(lon_lat.x),
-        sin(lon_lat.y),
+        cos(latitude) * cos(longitude),
+        cos(latitude) * sin(longitude),
+        sin(latitude),
     );
+    var sun_ray: vec3<f32> = vec3<f32>(0.0, -cos(uniforms.axial_tilt), sin(uniforms.axial_tilt));
 
-    var sun_ray: vec3<f32> = vec3<f32>(0.0, -1.0, 0.0);
+    var night_day_blend: f32 = 1.0 / (1.0 + exp(-20.0 * dot(sun_ray, globe_ray)));
 
-    var night_day_blend: f32;
-    // abs_angle is in range -TAU/2..TAU/2
-    if (abs_angle > 0.0) {
-        night_day_blend = 0.0;
-    } else {
-        night_day_blend = 1.0;
-    }
-    // override
-    night_day_blend = 1.0 / (1.0 + exp(-20.0 * dot(sun_ray, globe_ray)));
-
-    var rotated_angle: f32 = abs_angle + uniforms.rotation;
-    // Note this is in 0.0..1.0, not degrees
-    var tex_coord: vec2<f32> = vec2<f32>((lon_lat.x - uniforms.rotation) / TAU, 0.5 - lon_lat.y / TAU * 2.0);
+    var tex_coord: vec2<f32> = vec2<f32>(
+        (longitude - uniforms.rotation) / TAU,
+        0.5 - latitude / TAU * 2.0,
+    );
     var day_color: vec4<f32> = textureSample(globe_day_texture, globe_sampler, tex_coord);
     var night_color: vec4<f32> = textureSample(globe_night_texture, globe_sampler, tex_coord);
     var globe_color: vec4<f32> = lerp4(night_day_blend, night_color, day_color);
