@@ -751,6 +751,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "glam"
+version = "0.17.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e01732b97afd8508eee3333a541b9f7610f454bb818669e66e90f5f57c93a776"
+
+[[package]]
 name = "global-clock"
 version = "0.1.0"
 dependencies = [
@@ -758,6 +764,7 @@ dependencies = [
  "bytemuck",
  "chrono",
  "env_logger",
+ "glam",
  "image",
  "once_cell",
  "pollster",

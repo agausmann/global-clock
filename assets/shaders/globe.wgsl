@@ -1,3 +1,11 @@
+[[block]]
+struct Viewport {
+    proj: mat4x4<f32>;
+};
+
+[[group(1), binding(0)]]
+var<uniform> viewport: Viewport;
+
 struct VertexInput {
     [[location(0)]] position: vec2<f32>;
     [[location(1)]] uv: vec2<f32>;
@@ -11,7 +19,7 @@ struct VertexOutput {
 [[stage(vertex)]]
 fn main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
-    out.position = vec4<f32>(in.position, 0.0, 1.0);
+    out.position = viewport.proj * vec4<f32>(in.position, 0.0, 1.0);
     out.uv = in.uv;
     return out;
 }

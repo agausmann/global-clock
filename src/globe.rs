@@ -1,3 +1,4 @@
+use crate::viewport::Viewport;
 use crate::GraphicsContext;
 use anyhow::Context;
 use bytemuck::{Pod, Zeroable};
@@ -85,7 +86,7 @@ pub struct Globe {
 }
 
 impl Globe {
-    pub fn new(gfx: &GraphicsContext) -> anyhow::Result<Self> {
+    pub fn new(gfx: &GraphicsContext, viewport: &Viewport) -> anyhow::Result<Self> {
         let bind_group_layout =
             gfx.device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -136,7 +137,7 @@ impl Globe {
             .device
             .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Globe.pipeline_layout"),
-                bind_group_layouts: &[&bind_group_layout],
+                bind_group_layouts: &[&bind_group_layout, viewport.bind_group_layout()],
                 push_constant_ranges: &[],
             });
 
@@ -313,7 +314,12 @@ impl Globe {
             * ((date.ordinal0() as f32 + EQUINOX_OFFSET) / DAYS_PER_YEAR * TAU).sin();
     }
 
-    pub fn draw(&self, encoder: &mut wgpu::CommandEncoder, frame_view: &wgpu::TextureView) {
+    pub fn draw(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        frame_view: &wgpu::TextureView,
+        viewport: &Viewport,
+    ) {
         // Update uniforms
         self.gfx
             .queue
@@ -336,6 +342,7 @@ impl Globe {
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
         render_pass.set_bind_group(0, &self.bind_group, &[]);
+        render_pass.set_bind_group(1, viewport.bind_group(), &[]);
         render_pass.draw_indexed(0..INDICES.len().try_into().unwrap(), 0, 0..1);
     }
 }

@@ -1,6 +1,8 @@
 mod globe;
+mod viewport;
 
 use self::globe::Globe;
+use self::viewport::Viewport;
 use anyhow::Context;
 use chrono::Utc;
 use pollster::block_on;
@@ -59,17 +61,20 @@ impl GraphicsContextInner {
 
 struct App {
     gfx: GraphicsContext,
-    swap_chain: Option<wgpu::SwapChain>,
+    viewport: Viewport,
     globe: Globe,
+    swap_chain: Option<wgpu::SwapChain>,
 }
 
 impl App {
     async fn new(window: Window) -> anyhow::Result<Self> {
         let gfx = Arc::new(GraphicsContextInner::new(window).await?);
-        let globe = Globe::new(&gfx)?;
+        let viewport = Viewport::new(&gfx);
+        let globe = Globe::new(&gfx, &viewport)?;
 
         Ok(Self {
             gfx,
+            viewport,
             globe,
             swap_chain: None,
         })
@@ -97,7 +102,7 @@ impl App {
 
         let mut encoder = self.gfx.device.create_command_encoder(&Default::default());
 
-        self.globe.draw(&mut encoder, &frame.view);
+        self.globe.draw(&mut encoder, &frame.view, &self.viewport);
         self.gfx.queue.submit([encoder.finish()]);
 
         Ok(())
@@ -105,6 +110,7 @@ impl App {
 
     fn window_resized(&mut self) {
         self.swap_chain = None;
+        self.viewport.window_resized()
     }
 
     fn swap_chain(&mut self) -> &wgpu::SwapChain {
