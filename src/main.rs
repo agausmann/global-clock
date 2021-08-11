@@ -1,6 +1,8 @@
+mod background;
 mod globe;
 mod viewport;
 
+use self::background::Background;
 use self::globe::Globe;
 use self::viewport::Viewport;
 use anyhow::Context;
@@ -62,6 +64,7 @@ impl GraphicsContextInner {
 struct App {
     gfx: GraphicsContext,
     viewport: Viewport,
+    background: Background,
     globe: Globe,
     swap_chain: Option<wgpu::SwapChain>,
 }
@@ -70,11 +73,13 @@ impl App {
     async fn new(window: Window) -> anyhow::Result<Self> {
         let gfx = Arc::new(GraphicsContextInner::new(window).await?);
         let viewport = Viewport::new(&gfx);
+        let background = Background::new(&gfx);
         let globe = Globe::new(&gfx, &viewport)?;
 
         Ok(Self {
             gfx,
             viewport,
+            background,
             globe,
             swap_chain: None,
         })
@@ -102,6 +107,7 @@ impl App {
 
         let mut encoder = self.gfx.device.create_command_encoder(&Default::default());
 
+        self.background.draw(&mut encoder, &frame.view);
         self.globe.draw(&mut encoder, &frame.view, &self.viewport);
         self.gfx.queue.submit([encoder.finish()]);
 
