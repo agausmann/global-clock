@@ -66,7 +66,7 @@ struct App {
 impl App {
     async fn new(window: Window) -> anyhow::Result<Self> {
         let gfx = Arc::new(GraphicsContextInner::new(window).await?);
-        let globe = Globe::new(&gfx);
+        let globe = Globe::new(&gfx)?;
 
         Ok(Self {
             gfx,

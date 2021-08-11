@@ -1,4 +1,5 @@
 use crate::GraphicsContext;
+use anyhow::Context;
 use bytemuck::{Pod, Zeroable};
 use chrono::{DateTime, Datelike, Timelike, Utc};
 use once_cell::sync::Lazy;
@@ -84,7 +85,7 @@ pub struct Globe {
 }
 
 impl Globe {
-    pub fn new(gfx: &GraphicsContext) -> Self {
+    pub fn new(gfx: &GraphicsContext) -> anyhow::Result<Self> {
         let bind_group_layout =
             gfx.device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -139,9 +140,15 @@ impl Globe {
                 push_constant_ranges: &[],
             });
 
+        let shader_source = std::fs::read_to_string("assets/shaders/globe.wgsl")
+            .context("failed to load shader from disk")?;
         let shader_module = gfx
             .device
-            .create_shader_module(&wgpu::include_wgsl!("globe.wgsl"));
+            .create_shader_module(&wgpu::ShaderModuleDescriptor {
+                label: Some("Globe.shader_module"),
+                source: wgpu::ShaderSource::Wgsl(shader_source.into()),
+                flags: wgpu::ShaderFlags::VALIDATION,
+            });
 
         let render_pipeline = gfx
             .device
@@ -205,9 +212,14 @@ impl Globe {
             ..Default::default()
         });
 
-        fn load_texture(gfx: &GraphicsContext, bytes: &[u8], label: &str) -> wgpu::Texture {
-            let image = image::load_from_memory(bytes)
-                .expect("failed to load texture")
+        fn load_texture(
+            gfx: &GraphicsContext,
+            path: &str,
+            label: &str,
+        ) -> anyhow::Result<wgpu::Texture> {
+            let image_source = std::fs::read(path).context("failed to load texture from disk")?;
+            let image = image::load_from_memory(&image_source)
+                .context("failed to parse texture")?
                 .into_rgba8();
             let size = wgpu::Extent3d {
                 width: image.width(),
@@ -237,20 +249,16 @@ impl Globe {
                 },
                 size,
             );
-            texture
+            Ok(texture)
         }
 
-        let day_texture = load_texture(
-            gfx,
-            include_bytes!("textures/globe_day.jpg"),
-            "Globe.day_texture",
-        );
+        let day_texture = load_texture(gfx, "assets/textures/globe_day.jpg", "Globe.day_texture")?;
         let day_texture_view = day_texture.create_view(&Default::default());
         let night_texture = load_texture(
             gfx,
-            include_bytes!("textures/globe_night.jpg"),
+            "assets/textures/globe_night.jpg",
             "Globe.night_texture",
-        );
+        )?;
         let night_texture_view = night_texture.create_view(&Default::default());
 
         let bind_group = gfx.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -276,7 +284,7 @@ impl Globe {
             ],
         });
 
-        Self {
+        Ok(Self {
             gfx: gfx.clone(),
             render_pipeline,
             vertex_buffer,
@@ -284,7 +292,7 @@ impl Globe {
             uniform_buffer,
             bind_group,
             uniforms: Default::default(),
-        }
+        })
     }
 
     pub fn set_date(&mut self, date: &DateTime<Utc>) {
