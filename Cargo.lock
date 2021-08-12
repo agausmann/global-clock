@@ -772,6 +772,7 @@ dependencies = [
  "env_logger",
  "glam",
  "image",
+ "instant",
  "once_cell",
  "pollster",
  "tiny-skia",

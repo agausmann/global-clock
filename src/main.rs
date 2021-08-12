@@ -9,10 +9,11 @@ use self::globe::Globe;
 use self::viewport::Viewport;
 use anyhow::Context;
 use chrono::Utc;
+use instant::{Duration, Instant};
 use pollster::block_on;
 use std::sync::Arc;
 use winit::dpi::LogicalSize;
-use winit::event::{Event, WindowEvent};
+use winit::event::{Event, StartCause, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
 
@@ -159,7 +160,17 @@ fn main() -> anyhow::Result<()> {
 
     let mut app = block_on(App::new(window))?;
 
-    event_loop.run(move |event, _, control_flow| match event {
+    event_loop.run(move |event, _, control_flow| match dbg!(event) {
+        Event::NewEvents(StartCause::Init) => {
+            // Get the ball rolling with an initial timeout of NOW
+            *control_flow = ControlFlow::WaitUntil(Instant::now());
+        }
+        Event::NewEvents(StartCause::ResumeTimeReached {
+            requested_resume, ..
+        }) => {
+            *control_flow = ControlFlow::WaitUntil(requested_resume + Duration::from_secs(1));
+            app.gfx.window.request_redraw();
+        }
         Event::RedrawRequested(..) => {
             app.update();
             app.redraw().unwrap();
@@ -173,9 +184,6 @@ fn main() -> anyhow::Result<()> {
             }
             _ => {}
         },
-        Event::MainEventsCleared => {
-            app.gfx.window.request_redraw();
-        }
         _ => {}
     })
 }
