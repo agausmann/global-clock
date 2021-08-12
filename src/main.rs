@@ -160,7 +160,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut app = block_on(App::new(window))?;
 
-    event_loop.run(move |event, _, control_flow| match dbg!(event) {
+    event_loop.run(move |event, _, control_flow| match event {
         Event::NewEvents(StartCause::Init) => {
             // Get the ball rolling with an initial timeout of NOW
             *control_flow = ControlFlow::WaitUntil(Instant::now());
