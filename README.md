@@ -12,7 +12,7 @@ Inspired by <https://xkcd.com/now>:
 
 - The [Rust toolchain](https://www.rust-lang.org/tools/install)
 
-## Build instructions
+### Build instructions
 
 Download the repository and run this command in the root directory: 
 
