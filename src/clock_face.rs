@@ -1,9 +1,12 @@
 use crate::viewport::Viewport;
 use crate::{asset_str, GraphicsContext};
 use bytemuck::{Pod, Zeroable};
+use chrono::{NaiveTime, Timelike};
 use once_cell::sync::Lazy;
 use std::convert::TryInto;
 use std::f32::consts::TAU;
+use std::num::NonZeroU32;
+use tiny_skia::{BlendMode, Color, LineCap, Paint, Path, PathBuilder, Pixmap, Stroke, Transform};
 use wgpu::util::DeviceExt;
 
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -51,87 +54,189 @@ const VERTICES: [Vertex; 4] = [
 
 const INDICES: [u16; 6] = [0, 1, 2, 2, 3, 0];
 
-const TEXTURE_WIDTH: u32 = 1024;
+struct Config {
+    width: u32,
+    major_ticks: u32,
+    minor_ticks: u32,
+    major_inner_radius: f32,
+    major_outer_radius: f32,
+    minor_inner_radius: f32,
+    minor_outer_radius: f32,
+    hour_hand_length: f32,
+    minute_hand_length: f32,
+}
 
-fn render_clock_face() -> tiny_skia::Pixmap {
-    use tiny_skia::*;
-
-    let mut paint = Paint::default();
-    paint.set_color(Color::from_rgba(1.0, 1.0, 1.0, 0.5).unwrap());
-    paint.anti_alias = true;
-    paint.blend_mode = BlendMode::Source;
-
-    let mut major_stroke = Stroke::default();
-    major_stroke.width = 0.02;
-    major_stroke.line_cap = LineCap::Round;
-
-    let mut minor_stroke = Stroke::default();
-    minor_stroke.width = 0.015;
-    minor_stroke.line_cap = LineCap::Round;
-
-    let mut pixmap = Pixmap::new(TEXTURE_WIDTH, TEXTURE_WIDTH).unwrap();
-    // Transform from normalized coordinates (-1.0..1.0) to pixels
-    let transform = Transform::identity()
-        .post_translate(1.0, 1.0)
-        .post_scale(TEXTURE_WIDTH as f32 / 2.0, TEXTURE_WIDTH as f32 / 2.0);
-
-    let major_ticks = 4;
-    let major_inner_radius = 0.85;
-    let major_outer_radius = 0.95;
-
-    let minor_ticks = 5;
-    let minor_inner_radius = 0.9;
-    let minor_outer_radius = 0.95;
-
-    let major_path = {
-        let mut pb = PathBuilder::new();
-
-        for tick in 0..major_ticks {
-            let angle = (tick as f32) / (major_ticks as f32) * TAU;
-            pb.move_to(
-                major_inner_radius * angle.cos(),
-                major_inner_radius * angle.sin(),
-            );
-            pb.line_to(
-                major_outer_radius * angle.cos(),
-                major_outer_radius * angle.sin(),
-            );
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            width: 1024,
+            major_ticks: 4,
+            minor_ticks: 5,
+            major_inner_radius: 0.85,
+            major_outer_radius: 0.95,
+            minor_inner_radius: 0.9,
+            minor_outer_radius: 0.95,
+            hour_hand_length: 0.4,
+            minute_hand_length: 0.6,
         }
-        pb.finish().unwrap()
-    };
+    }
+}
 
-    let minor_path = {
-        let mut pb = PathBuilder::new();
+struct Renderer {
+    pixmap: Pixmap,
+    paint: Paint<'static>,
+    major_stroke: Stroke,
+    minor_stroke: Stroke,
+    transform: Transform,
+    major_tick_path: Path,
+    minor_tick_path: Path,
+    hour_hand_path: Path,
+    minute_hand_path: Path,
+    hour_angle: f32,
+    minute_angle: f32,
+}
 
-        for tick in 0..major_ticks {
-            let start_angle = (tick as f32) / (major_ticks as f32) * TAU;
-            for minor_tick in 1..=minor_ticks {
-                let angle = start_angle
-                    + (minor_tick as f32) / (minor_ticks as f32 + 1.0) / (major_ticks as f32) * TAU;
+impl Renderer {
+    fn new(config: &Config) -> Self {
+        let mut paint = Paint::default();
+        paint.set_color(Color::from_rgba(1.0, 1.0, 1.0, 0.5).unwrap());
+        paint.anti_alias = true;
+        paint.blend_mode = BlendMode::Source;
 
+        let mut major_stroke = Stroke::default();
+        major_stroke.width = 0.02;
+        major_stroke.line_cap = LineCap::Round;
+
+        let mut minor_stroke = Stroke::default();
+        minor_stroke.width = 0.015;
+        minor_stroke.line_cap = LineCap::Round;
+
+        let pixmap = Pixmap::new(config.width, config.width).unwrap();
+        // Transform from normalized coordinates (-1.0..1.0) to pixels
+        // Also flip Y axis so +1.0 is up => row 0
+        let transform = Transform::identity()
+            .post_translate(1.0, -1.0)
+            .post_scale(config.width as f32 / 2.0, config.width as f32 / -2.0);
+
+        let major_tick_path = {
+            let mut pb = PathBuilder::new();
+
+            for tick in 0..config.major_ticks {
+                let angle = (tick as f32) / (config.major_ticks as f32) * TAU;
                 pb.move_to(
-                    minor_inner_radius * angle.cos(),
-                    minor_inner_radius * angle.sin(),
+                    config.major_inner_radius * angle.cos(),
+                    config.major_inner_radius * angle.sin(),
                 );
                 pb.line_to(
-                    minor_outer_radius * angle.cos(),
-                    minor_outer_radius * angle.sin(),
+                    config.major_outer_radius * angle.cos(),
+                    config.major_outer_radius * angle.sin(),
                 );
             }
-        }
-        pb.finish().unwrap()
-    };
+            pb.finish().unwrap()
+        };
 
-    pixmap.stroke_path(&major_path, &paint, &major_stroke, transform, None);
-    pixmap.stroke_path(&minor_path, &paint, &minor_stroke, transform, None);
-    pixmap
+        let minor_tick_path = {
+            let mut pb = PathBuilder::new();
+
+            for tick in 0..config.major_ticks {
+                let start_angle = (tick as f32) / (config.major_ticks as f32) * TAU;
+                for minor_tick in 1..=config.minor_ticks {
+                    let angle = start_angle
+                        + (minor_tick as f32)
+                            / (config.minor_ticks as f32 + 1.0)
+                            / (config.major_ticks as f32)
+                            * TAU;
+
+                    pb.move_to(
+                        config.minor_inner_radius * angle.cos(),
+                        config.minor_inner_radius * angle.sin(),
+                    );
+                    pb.line_to(
+                        config.minor_outer_radius * angle.cos(),
+                        config.minor_outer_radius * angle.sin(),
+                    );
+                }
+            }
+            pb.finish().unwrap()
+        };
+
+        let hour_hand_path = {
+            let mut pb = PathBuilder::new();
+            pb.move_to(0.0, 0.0);
+            pb.line_to(0.0, config.hour_hand_length);
+            pb.finish().unwrap()
+        };
+
+        let minute_hand_path = {
+            let mut pb = PathBuilder::new();
+            pb.move_to(0.0, 0.0);
+            pb.line_to(0.0, config.minute_hand_length);
+            pb.finish().unwrap()
+        };
+
+        Self {
+            pixmap,
+            paint,
+            major_stroke,
+            minor_stroke,
+            transform,
+            major_tick_path,
+            minor_tick_path,
+            hour_hand_path,
+            minute_hand_path,
+            hour_angle: 0.0,
+            minute_angle: 0.0,
+        }
+    }
+
+    fn set_time(&mut self, time: &NaiveTime) {
+        self.hour_angle = time.num_seconds_from_midnight() as f32 / 86400.0 * TAU;
+        self.minute_angle = time.num_seconds_from_midnight() as f32 / 3600.0 * TAU;
+    }
+
+    fn redraw(&mut self) {
+        self.pixmap.fill(Color::TRANSPARENT);
+        self.pixmap.stroke_path(
+            &self.major_tick_path,
+            &self.paint,
+            &self.major_stroke,
+            self.transform,
+            None,
+        );
+        self.pixmap.stroke_path(
+            &self.minor_tick_path,
+            &self.paint,
+            &self.minor_stroke,
+            self.transform,
+            None,
+        );
+        self.pixmap.stroke_path(
+            &self.hour_hand_path,
+            &self.paint,
+            &self.major_stroke,
+            self.transform
+                .pre_concat(Transform::from_rotate(-self.hour_angle.to_degrees())),
+            None,
+        );
+        self.pixmap.stroke_path(
+            &self.minute_hand_path,
+            &self.paint,
+            &self.minor_stroke,
+            self.transform
+                .pre_concat(Transform::from_rotate(-self.minute_angle.to_degrees())),
+            None,
+        );
+    }
 }
 
 pub struct ClockFace {
+    gfx: GraphicsContext,
     render_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
+    texture: wgpu::Texture,
+    renderer: Renderer,
 }
 
 impl ClockFace {
@@ -232,25 +337,22 @@ impl ClockFace {
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-        let pixmap = render_clock_face();
-        let texture = gfx.device.create_texture_with_data(
-            &gfx.queue,
-            &wgpu::TextureDescriptor {
-                label: Some("ClockFace.texture"),
-                size: wgpu::Extent3d {
-                    width: TEXTURE_WIDTH,
-                    height: TEXTURE_WIDTH,
-                    ..Default::default()
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                usage: wgpu::TextureUsage::COPY_DST | wgpu::TextureUsage::SAMPLED,
+        let config = Config::default();
+        let texture = gfx.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("ClockFace.texture"),
+            size: wgpu::Extent3d {
+                width: config.width,
+                height: config.width,
+                ..Default::default()
             },
-            bytemuck::cast_slice(pixmap.pixels()),
-        );
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsage::COPY_DST | wgpu::TextureUsage::SAMPLED,
+        });
         let texture_view = texture.create_view(&Default::default());
+        let renderer = Renderer::new(&config);
 
         let bind_group = gfx.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("ClockFace.bind_group"),
@@ -268,19 +370,46 @@ impl ClockFace {
         });
 
         Ok(Self {
+            gfx: gfx.clone(),
             render_pipeline,
             vertex_buffer,
             index_buffer,
             bind_group,
+            texture,
+            renderer,
         })
     }
 
+    pub fn set_time(&mut self, time: &NaiveTime) {
+        self.renderer.set_time(time)
+    }
+
     pub fn draw(
-        &self,
+        &mut self,
         encoder: &mut wgpu::CommandEncoder,
         frame_view: &wgpu::TextureView,
         viewport: &Viewport,
     ) {
+        self.renderer.redraw();
+        let pixmap = &self.renderer.pixmap;
+        self.gfx.queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &self.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+            },
+            bytemuck::cast_slice(pixmap.pixels()),
+            wgpu::ImageDataLayout {
+                bytes_per_row: Some(NonZeroU32::new(pixmap.width() * 4).unwrap()),
+                ..Default::default()
+            },
+            wgpu::Extent3d {
+                width: pixmap.width(),
+                height: pixmap.height(),
+                ..Default::default()
+            },
+        );
+
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("ClockFace.render_pass"),
             color_attachments: &[wgpu::RenderPassColorAttachment {

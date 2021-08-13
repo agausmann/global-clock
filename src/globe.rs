@@ -302,8 +302,8 @@ impl Globe {
 
     pub fn set_date(&mut self, date: &DateTime<Utc>) {
         const SECONDS_PER_DAY: f32 = 86400.0;
-        // Offset to compensate for angle 0 being at 6:00 PM UTC
-        const ANGLE_OFFSET: f32 = -TAU / 4.0;
+        // Offset to compensate for angle 0 being at 6:00 AM UTC
+        const ANGLE_OFFSET: f32 = TAU / 4.0;
 
         self.uniforms.rotation =
             (date.num_seconds_from_midnight() as f32) / SECONDS_PER_DAY * TAU + ANGLE_OFFSET;

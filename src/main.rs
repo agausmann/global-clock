@@ -9,7 +9,7 @@ use self::clock_face::ClockFace;
 use self::globe::Globe;
 use self::viewport::Viewport;
 use anyhow::Context;
-use chrono::Utc;
+use chrono::{Local, Utc};
 use instant::{Duration, Instant};
 use pollster::block_on;
 use std::sync::Arc;
@@ -93,7 +93,9 @@ impl App {
     }
 
     fn update(&mut self) {
-        self.globe.set_date(&Utc::now());
+        let date = Utc::now();
+        self.globe.set_date(&date);
+        self.clock_face.set_time(&date.with_timezone(&Local).time())
     }
 
     fn redraw(&mut self) -> anyhow::Result<()> {

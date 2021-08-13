@@ -75,7 +75,7 @@ fn main(in: VertexOutput) -> [[location(0)]] vec4<f32> {
         cos(latitude) * sin(longitude),
         sin(latitude),
     );
-    var sun_ray: vec3<f32> = vec3<f32>(0.0, -cos(uniforms.axial_tilt), sin(uniforms.axial_tilt));
+    var sun_ray: vec3<f32> = vec3<f32>(0.0, cos(uniforms.axial_tilt), sin(uniforms.axial_tilt));
 
     var night_day_blend: f32 = 1.0 / (1.0 + exp(-20.0 * dot(sun_ray, globe_ray)));
 
