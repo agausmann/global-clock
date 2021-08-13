@@ -1,5 +1,5 @@
 use crate::viewport::Viewport;
-use crate::GraphicsContext;
+use crate::{asset_bytes, asset_str, GraphicsContext};
 use anyhow::Context;
 use bytemuck::{Pod, Zeroable};
 use chrono::{DateTime, Datelike, Timelike, Utc};
@@ -144,13 +144,11 @@ impl Globe {
                 push_constant_ranges: &[],
             });
 
-        let shader_source = std::fs::read_to_string("assets/shaders/globe.wgsl")
-            .context("failed to load shader from disk")?;
         let shader_module = gfx
             .device
             .create_shader_module(&wgpu::ShaderModuleDescriptor {
                 label: Some("Globe.shader_module"),
-                source: wgpu::ShaderSource::Wgsl(shader_source.into()),
+                source: wgpu::ShaderSource::Wgsl(asset_str!("shaders/globe.wgsl")),
                 flags: wgpu::ShaderFlags::VALIDATION,
             });
 
@@ -218,11 +216,10 @@ impl Globe {
 
         fn load_texture(
             gfx: &GraphicsContext,
-            path: &str,
+            image_source: &[u8],
             label: &str,
         ) -> anyhow::Result<wgpu::Texture> {
-            let image_source = std::fs::read(path).context("failed to load texture from disk")?;
-            let image = image::load_from_memory(&image_source)
+            let image = image::load_from_memory(image_source)
                 .context("failed to parse texture")?
                 .into_rgba8();
             let size = wgpu::Extent3d {
@@ -256,11 +253,15 @@ impl Globe {
             Ok(texture)
         }
 
-        let day_texture = load_texture(gfx, "assets/textures/globe_day.jpg", "Globe.day_texture")?;
+        let day_texture = load_texture(
+            gfx,
+            &*asset_bytes!("textures/globe_day.jpg"),
+            "Globe.day_texture",
+        )?;
         let day_texture_view = day_texture.create_view(&Default::default());
         let night_texture = load_texture(
             gfx,
-            "assets/textures/globe_night.jpg",
+            &*asset_bytes!("textures/globe_night.jpg"),
             "Globe.night_texture",
         )?;
         let night_texture_view = night_texture.create_view(&Default::default());

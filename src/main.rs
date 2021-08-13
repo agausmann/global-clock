@@ -1,6 +1,7 @@
 mod background;
 mod clock_face;
 mod globe;
+pub(crate) mod macros;
 mod viewport;
 
 use self::background::Background;

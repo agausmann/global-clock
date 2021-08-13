@@ -1,6 +1,5 @@
 use crate::viewport::Viewport;
-use crate::GraphicsContext;
-use anyhow::Context;
+use crate::{asset_str, GraphicsContext};
 use bytemuck::{Pod, Zeroable};
 use once_cell::sync::Lazy;
 use std::convert::TryInto;
@@ -171,13 +170,11 @@ impl ClockFace {
                 push_constant_ranges: &[],
             });
 
-        let shader_source = std::fs::read_to_string("assets/shaders/clock_face.wgsl")
-            .context("failed to load shader from disk")?;
         let shader_module = gfx
             .device
             .create_shader_module(&wgpu::ShaderModuleDescriptor {
                 label: Some("ClockFace.shader_module"),
-                source: wgpu::ShaderSource::Wgsl(shader_source.into()),
+                source: wgpu::ShaderSource::Wgsl(asset_str!("shaders/clock_face.wgsl")),
                 flags: wgpu::ShaderFlags::VALIDATION,
             });
 
