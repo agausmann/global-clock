@@ -2,11 +2,22 @@
 name = "global-clock"
 version = "0.1.0"
 edition = "2018"
+resolver = "2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
 bundled-assets = []
+web = [
+    "bundled-assets",
+    "console_error_panic_hook",
+    "console_log",
+    "wasm-bindgen-futures",
+    "web-sys",
+    "winit/web-sys",
+    "wgpu/webgl",
+    "chrono/wasmbind",
+]
 
 [dependencies]
 anyhow = "1.0"
@@ -14,7 +25,6 @@ bytemuck = { version = "1.7", features = ["derive"] }
 chrono = "0.4"
 env_logger = "0.9"
 glam = "0.17"
-image = "0.23"
 instant = "0.1"
 once_cell = "1.8"
 pollster = "0.2"
@@ -22,5 +32,30 @@ tiny-skia = "0.5"
 wgpu = "0.9"
 winit = "0.25"
 
+console_error_panic_hook = { version = "0.1", optional = true }
+console_log = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+
+[dependencies.image]
+version = "0.23"
+default-features = false
+features = [
+    "jpeg",
+]
+
+[dependencies.web-sys]
+version = "0.3"
+optional = true
+features = [
+    "Document",
+    "HtmlElement",
+    "Node",
+    "Window",
+]
+
 [profile.dev]
 opt-level = 3
+
+[patch.crates-io]
+#wgpu = { git = "https://github.com/katharostech/wgpu.git", branch = "webgl-backend" }
+wgpu = { path = "/home/adam/dev/contrib/wgpu/wgpu" }

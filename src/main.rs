@@ -11,7 +11,6 @@ use self::viewport::Viewport;
 use anyhow::Context;
 use chrono::{Local, Utc};
 use instant::{Duration, Instant};
-use pollster::block_on;
 use std::sync::Arc;
 use winit::dpi::LogicalSize;
 use winit::event::{Event, StartCause, WindowEvent};
@@ -33,10 +32,7 @@ impl GraphicsContextInner {
         let instance = wgpu::Instance::new(wgpu::BackendBit::PRIMARY);
         let surface = unsafe { instance.create_surface(&window) };
         let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
-                compatible_surface: Some(&surface),
-            })
+            .request_adapter(&Default::default())
             .await
             .context("failed to create adapter")?;
 
@@ -45,7 +41,7 @@ impl GraphicsContextInner {
                 &wgpu::DeviceDescriptor {
                     label: None,
                     features: wgpu::Features::empty(),
-                    limits: wgpu::Limits::default(),
+                    limits: wgpu::Limits::downlevel_webgl2_defaults(),
                 },
                 None,
             )
@@ -137,7 +133,7 @@ impl App {
             gfx.device.create_swap_chain(
                 &gfx.surface,
                 &wgpu::SwapChainDescriptor {
-                    usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                     format: gfx.render_format,
                     width: gfx.window.inner_size().width,
                     height: gfx.window.inner_size().height,
@@ -148,20 +144,8 @@ impl App {
     }
 }
 
-fn main() -> anyhow::Result<()> {
-    env_logger::init();
-
-    // The window decorations provided by winit when using wayland do not match the native system
-    // theme, so fallback to X11 via XWayland if possible.
-    std::env::set_var("WINIT_UNIX_BACKEND", "x11");
-
-    let event_loop = EventLoop::new();
-    let window = WindowBuilder::new()
-        .with_inner_size(LogicalSize::new(720, 720))
-        .with_title("Global Clock")
-        .build(&event_loop)?;
-
-    let mut app = block_on(App::new(window))?;
+async fn run(event_loop: EventLoop<()>, window: Window) {
+    let mut app = App::new(window).await.unwrap();
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::NewEvents(StartCause::Init) => {
@@ -189,4 +173,43 @@ fn main() -> anyhow::Result<()> {
         },
         _ => {}
     })
+}
+
+fn main() -> anyhow::Result<()> {
+    let event_loop = EventLoop::new();
+    let window = WindowBuilder::new()
+        .with_inner_size(LogicalSize::new(720, 720))
+        .with_title("Global Clock")
+        .build(&event_loop)?;
+
+    #[cfg(not(feature = "web"))]
+    {
+        env_logger::init();
+
+        // The window decorations provided by winit when using wayland do not match the native system
+        // theme, so fallback to X11 via XWayland if possible.
+        std::env::set_var("WINIT_UNIX_BACKEND", "x11");
+
+        pollster::block_on(run(event_loop, window));
+    }
+    #[cfg(feature = "web")]
+    {
+        use winit::platform::web::WindowExtWebSys;
+
+        console_error_panic_hook::set_once();
+        console_log::init()?;
+
+        web_sys::window()
+            .and_then(|window| window.document())
+            .and_then(|document| document.body())
+            .and_then(|body| {
+                body.append_child(&web_sys::Element::from(window.canvas()))
+                    .ok()
+            })
+            .context("couldn't set canvas in document body")?;
+
+        wasm_bindgen_futures::spawn_local(run(event_loop, window));
+    }
+
+    Ok(())
 }
