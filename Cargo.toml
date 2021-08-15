@@ -57,5 +57,4 @@ features = [
 opt-level = 3
 
 [patch.crates-io]
-#wgpu = { git = "https://github.com/katharostech/wgpu.git", branch = "webgl-backend" }
-wgpu = { path = "/home/adam/dev/contrib/wgpu/wgpu" }
+wgpu = { git = "https://github.com/agausmann/wgpu.git", branch = "patch/global-clock-webgl" }
