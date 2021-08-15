@@ -63,6 +63,7 @@ struct Uniforms {
     axial_tilt: f32,
     min_latitude: f32,
     max_latitude: f32,
+    deflection_point: [f32; 2],
 }
 
 impl Default for Uniforms {
@@ -73,6 +74,7 @@ impl Default for Uniforms {
             axial_tilt: 0.0,
             min_latitude: -TAU / 4.0,
             max_latitude: TAU / 4.0,
+            deflection_point: [0.55, 0.65],
         }
     }
 }
