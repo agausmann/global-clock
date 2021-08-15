@@ -29,7 +29,12 @@ pub struct GraphicsContextInner {
 
 impl GraphicsContextInner {
     async fn new(window: Window) -> anyhow::Result<Self> {
-        let instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
+        let backends = if cfg!(feature = "web") {
+            wgpu::Backends::GL
+        } else {
+            wgpu::Backends::PRIMARY
+        };
+        let instance = wgpu::Instance::new(backends);
         let surface = unsafe { instance.create_surface(&window) };
         let adapter = instance
             .request_adapter(&Default::default())
