@@ -54,6 +54,7 @@ fn lerp4(factor: f32, a: vec4<f32>, b: vec4<f32>) -> vec4<f32> {
 
 [[stage(fragment)]]
 fn main(in: VertexOutput) -> [[location(0)]] vec4<f32> {
+    // Temporary crash fix, see gfx-rs/wgpu#1803
     var _: mat4x4<f32> = viewport.proj;
 
     // Map 0.0..1.0 to -1.0..1.0

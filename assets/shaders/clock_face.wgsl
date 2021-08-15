@@ -31,6 +31,8 @@ fn main(in: VertexInput) -> VertexOutput {
 
 [[stage(fragment)]]
 fn main(in: VertexOutput) -> [[location(0)]] vec4<f32> {
+    // Temporary crash fix, see gfx-rs/wgpu#1803
     var _: mat4x4<f32> = viewport.proj;
+
     return textureSample(texture, t_sampler, in.uv);
 }
