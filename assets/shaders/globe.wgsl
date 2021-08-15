@@ -5,6 +5,7 @@ struct Uniforms {
     axial_tilt: f32;
     min_latitude: f32;
     max_latitude: f32;
+    deflection_point: vec2<f32>;
 };
 
 [[group(0), binding(0)]]
@@ -67,7 +68,20 @@ fn main(in: VertexOutput) -> [[location(0)]] vec4<f32> {
 
     // Note these are in radians, not degrees
     var longitude: f32 = abs_angle;
-    var latitude: f32 = lerp(radius, uniforms.min_latitude, uniforms.max_latitude);
+    var latitude: f32;
+    if (radius < uniforms.deflection_point.x) {
+        latitude = lerp(
+            radius / uniforms.deflection_point.x,
+            uniforms.min_latitude,
+            uniforms.deflection_point.y,
+        );
+    } else {
+        latitude = lerp(
+            (radius - uniforms.deflection_point.x) / (1.0 - uniforms.deflection_point.x),
+            uniforms.deflection_point.y,
+            uniforms.max_latitude,
+        );
+    }
 
     // 3D space for light calculations:
     // - Equator lies in the XY plane

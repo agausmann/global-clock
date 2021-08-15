@@ -26,10 +26,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-Images of the earth are obtained from the [Solar Textures] pack, by Solar
-System Scope. It is made available under the terms of the [Attribution 4.0
+Earth textures are obtained from the [Solar Textures] pack, by Solar System
+Scope. It is made available under the terms of the [Attribution 4.0
 International][CC BY 4.0] license.
 
 [Solar Textures]: https://www.solarsystemscope.com/textures/
 [CC BY 4.0]: https://creativecommons.org/licenses/by/4.0/
-
