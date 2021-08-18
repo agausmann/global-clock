@@ -100,8 +100,8 @@ fn main(in: VertexOutput) -> [[location(0)]] vec4<f32> {
     var day_color: vec4<f32> = textureSample(globe_day_texture, globe_sampler, tex_coord);
     var night_color: vec4<f32> = textureSample(globe_night_texture, globe_sampler, tex_coord);
 
-    var ambient: vec4<f32> = lerp4(night_day_blend, night_color, 0.8 * day_color);
-    var diffuse: vec4<f32> = 0.2 * day_color * dot(sun_ray, globe_ray);
+    var ambient: vec4<f32> = lerp4(night_day_blend, night_color, 0.7 * day_color);
+    var diffuse: vec4<f32> = 0.3 * day_color * max(0.0, dot(sun_ray, globe_ray));
 
     if (radius <= 1.0) {
         return ambient + diffuse;
