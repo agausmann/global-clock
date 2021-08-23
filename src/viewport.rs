@@ -17,7 +17,7 @@ impl Viewport {
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Viewport.uniform_buffer"),
                 contents: bytemuck::bytes_of(&Uniforms::default()),
-                usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             });
         let bind_group_layout =
             gfx.device
@@ -25,7 +25,7 @@ impl Viewport {
                     label: Some("Viewport.bind_group_layout"),
                     entries: &[wgpu::BindGroupLayoutEntry {
                         binding: 0,
-                        visibility: wgpu::ShaderStage::VERTEX,
+                        visibility: wgpu::ShaderStages::VERTEX,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: false,

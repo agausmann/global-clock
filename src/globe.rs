@@ -28,7 +28,7 @@ impl Vertex {
     fn buffer_layout() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Self>().try_into().unwrap(),
-            step_mode: wgpu::InputStepMode::Vertex,
+            step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &VERTEX_ATTRIBUTES[..],
         }
     }
@@ -99,7 +99,7 @@ impl Globe {
                     entries: &[
                         wgpu::BindGroupLayoutEntry {
                             binding: 0,
-                            visibility: wgpu::ShaderStage::VERTEX | wgpu::ShaderStage::FRAGMENT,
+                            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                             ty: wgpu::BindingType::Buffer {
                                 ty: wgpu::BufferBindingType::Uniform,
                                 has_dynamic_offset: false,
@@ -109,7 +109,7 @@ impl Globe {
                         },
                         wgpu::BindGroupLayoutEntry {
                             binding: 1,
-                            visibility: wgpu::ShaderStage::FRAGMENT,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
                             ty: wgpu::BindingType::Sampler {
                                 comparison: false,
                                 filtering: true,
@@ -118,7 +118,7 @@ impl Globe {
                         },
                         wgpu::BindGroupLayoutEntry {
                             binding: 2,
-                            visibility: wgpu::ShaderStage::FRAGMENT,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
                             ty: wgpu::BindingType::Texture {
                                 multisampled: false,
                                 view_dimension: wgpu::TextureViewDimension::D2,
@@ -128,7 +128,7 @@ impl Globe {
                         },
                         wgpu::BindGroupLayoutEntry {
                             binding: 3,
-                            visibility: wgpu::ShaderStage::FRAGMENT,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
                             ty: wgpu::BindingType::Texture {
                                 multisampled: false,
                                 view_dimension: wgpu::TextureViewDimension::D2,
@@ -151,7 +151,6 @@ impl Globe {
             .create_shader_module(&wgpu::ShaderModuleDescriptor {
                 label: Some("Globe.shader_module"),
                 source: wgpu::ShaderSource::Wgsl(asset_str!("shaders/globe.wgsl")),
-                flags: wgpu::ShaderFlags::VALIDATION,
             });
 
         let render_pipeline = gfx
@@ -181,7 +180,7 @@ impl Globe {
                     targets: &[wgpu::ColorTargetState {
                         format: gfx.render_format,
                         blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                        write_mask: wgpu::ColorWrite::ALL,
+                        write_mask: wgpu::ColorWrites::ALL,
                     }],
                 }),
             });
@@ -191,20 +190,20 @@ impl Globe {
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Globe.vertex_buffer"),
                 contents: bytemuck::cast_slice(&VERTICES),
-                usage: wgpu::BufferUsage::VERTEX,
+                usage: wgpu::BufferUsages::VERTEX,
             });
         let index_buffer = gfx
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Globe.index_buffer"),
                 contents: bytemuck::cast_slice(&INDICES),
-                usage: wgpu::BufferUsage::INDEX,
+                usage: wgpu::BufferUsages::INDEX,
             });
 
         let uniform_buffer = gfx.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Globe.uniform_buffer"),
             size: std::mem::size_of::<Uniforms>().try_into().unwrap(),
-            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
@@ -236,13 +235,14 @@ impl Globe {
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             });
             gfx.queue.write_texture(
                 wgpu::ImageCopyTexture {
                     texture: &texture,
                     mip_level: 0,
                     origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
                 },
                 &image,
                 wgpu::ImageDataLayout {
