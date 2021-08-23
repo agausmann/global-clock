@@ -30,7 +30,7 @@ pub struct GraphicsContextInner {
 
 impl GraphicsContextInner {
     async fn new(window: Window) -> anyhow::Result<Self> {
-        let instance = wgpu::Instance::new(wgpu::BackendBit::PRIMARY);
+        let instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
         let surface = unsafe { instance.create_surface(&window) };
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -51,8 +51,8 @@ impl GraphicsContextInner {
             )
             .await?;
 
-        let render_format = adapter
-            .get_swap_chain_preferred_format(&surface)
+        let render_format = surface
+            .get_preferred_format(&adapter)
             .context("failed to select a render format")?;
 
         Ok(Self {
@@ -71,7 +71,6 @@ struct App {
     background: Background,
     globe: Globe,
     clock_face: ClockFace,
-    swap_chain: Option<wgpu::SwapChain>,
 }
 
 impl App {
@@ -88,7 +87,6 @@ impl App {
             background,
             globe,
             clock_face,
-            swap_chain: None,
         })
     }
 
@@ -100,12 +98,12 @@ impl App {
 
     fn redraw(&mut self) -> anyhow::Result<()> {
         let frame = loop {
-            match self.swap_chain().get_current_frame() {
+            match self.gfx.surface.get_current_frame() {
                 Ok(frame) => break frame.output,
-                Err(wgpu::SwapChainError::Lost) => {
-                    self.swap_chain = None;
+                Err(wgpu::SurfaceError::Lost) => {
+                    self.reconfigure();
                 }
-                Err(wgpu::SwapChainError::Timeout) | Err(wgpu::SwapChainError::Outdated) => {
+                Err(wgpu::SurfaceError::Timeout) | Err(wgpu::SurfaceError::Outdated) => {
                     return Ok(());
                 }
                 Err(err) => {
@@ -114,37 +112,34 @@ impl App {
             }
         };
 
+        let frame_view = frame.texture.create_view(&Default::default());
         let mut encoder = self.gfx.device.create_command_encoder(&Default::default());
 
-        self.background.draw(&mut encoder, &frame.view);
-        self.globe.draw(&mut encoder, &frame.view, &self.viewport);
+        self.background.draw(&mut encoder, &frame_view);
+        self.globe.draw(&mut encoder, &frame_view, &self.viewport);
         self.clock_face
-            .draw(&mut encoder, &frame.view, &self.viewport);
+            .draw(&mut encoder, &frame_view, &self.viewport);
         self.gfx.queue.submit([encoder.finish()]);
 
         Ok(())
     }
 
     fn window_resized(&mut self) {
-        self.swap_chain = None;
         self.viewport.window_resized();
+        self.reconfigure();
     }
 
-    fn swap_chain(&mut self) -> &wgpu::SwapChain {
-        // Split borrows (otherwise the closure will capture `self` entirely)
-        let &mut Self { ref gfx, .. } = self;
-        self.swap_chain.get_or_insert_with(|| {
-            gfx.device.create_swap_chain(
-                &gfx.surface,
-                &wgpu::SwapChainDescriptor {
-                    usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
-                    format: gfx.render_format,
-                    width: gfx.window.inner_size().width,
-                    height: gfx.window.inner_size().height,
-                    present_mode: wgpu::PresentMode::Fifo,
-                },
-            )
-        })
+    fn reconfigure(&self) {
+        self.gfx.surface.configure(
+            &self.gfx.device,
+            &wgpu::SurfaceConfiguration {
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                format: self.gfx.render_format,
+                width: self.gfx.window.inner_size().width,
+                height: self.gfx.window.inner_size().height,
+                present_mode: wgpu::PresentMode::Fifo,
+            },
+        );
     }
 }
 

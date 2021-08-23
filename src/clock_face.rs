@@ -27,7 +27,7 @@ impl Vertex {
     fn buffer_layout() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Self>().try_into().unwrap(),
-            step_mode: wgpu::InputStepMode::Vertex,
+            step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &VERTEX_ATTRIBUTES[..],
         }
     }
@@ -248,7 +248,7 @@ impl ClockFace {
                     entries: &[
                         wgpu::BindGroupLayoutEntry {
                             binding: 1,
-                            visibility: wgpu::ShaderStage::FRAGMENT,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
                             ty: wgpu::BindingType::Sampler {
                                 comparison: false,
                                 filtering: true,
@@ -257,7 +257,7 @@ impl ClockFace {
                         },
                         wgpu::BindGroupLayoutEntry {
                             binding: 2,
-                            visibility: wgpu::ShaderStage::FRAGMENT,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
                             ty: wgpu::BindingType::Texture {
                                 multisampled: false,
                                 view_dimension: wgpu::TextureViewDimension::D2,
@@ -280,7 +280,6 @@ impl ClockFace {
             .create_shader_module(&wgpu::ShaderModuleDescriptor {
                 label: Some("ClockFace.shader_module"),
                 source: wgpu::ShaderSource::Wgsl(asset_str!("shaders/clock_face.wgsl")),
-                flags: wgpu::ShaderFlags::VALIDATION,
             });
 
         let render_pipeline = gfx
@@ -310,7 +309,7 @@ impl ClockFace {
                     targets: &[wgpu::ColorTargetState {
                         format: gfx.render_format,
                         blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                        write_mask: wgpu::ColorWrite::ALL,
+                        write_mask: wgpu::ColorWrites::ALL,
                     }],
                 }),
             });
@@ -320,14 +319,14 @@ impl ClockFace {
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("ClockFace.vertex_buffer"),
                 contents: bytemuck::cast_slice(&VERTICES),
-                usage: wgpu::BufferUsage::VERTEX,
+                usage: wgpu::BufferUsages::VERTEX,
             });
         let index_buffer = gfx
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("ClockFace.index_buffer"),
                 contents: bytemuck::cast_slice(&INDICES),
-                usage: wgpu::BufferUsage::INDEX,
+                usage: wgpu::BufferUsages::INDEX,
             });
 
         let sampler = gfx.device.create_sampler(&wgpu::SamplerDescriptor {
@@ -349,7 +348,7 @@ impl ClockFace {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsage::COPY_DST | wgpu::TextureUsage::SAMPLED,
+            usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
         });
         let texture_view = texture.create_view(&Default::default());
         let renderer = Renderer::new(&config);
@@ -397,6 +396,7 @@ impl ClockFace {
                 texture: &self.texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
             },
             bytemuck::cast_slice(pixmap.pixels()),
             wgpu::ImageDataLayout {
