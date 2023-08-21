@@ -7,7 +7,6 @@ use glam::{Mat4, Vec3};
 use once_cell::sync::Lazy;
 use std::convert::TryInto;
 use std::f32::consts::TAU;
-use std::num::NonZeroU32;
 use wgpu::util::DeviceExt;
 
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -64,6 +63,7 @@ struct Uniforms {
     min_latitude: f32,
     max_latitude: f32,
     deflection_point: [f32; 2],
+    _padding: [u8; 8],
 }
 
 impl Default for Uniforms {
@@ -75,6 +75,7 @@ impl Default for Uniforms {
             min_latitude: -TAU / 4.0,
             max_latitude: TAU / 4.0,
             deflection_point: [0.55, 0.65],
+            _padding: [0; 8],
         }
     }
 }
@@ -110,10 +111,7 @@ impl Globe {
                         wgpu::BindGroupLayoutEntry {
                             binding: 1,
                             visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Sampler {
-                                comparison: false,
-                                filtering: true,
-                            },
+                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                             count: None,
                         },
                         wgpu::BindGroupLayoutEntry {
@@ -148,7 +146,7 @@ impl Globe {
 
         let shader_module = gfx
             .device
-            .create_shader_module(&wgpu::ShaderModuleDescriptor {
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("Globe.shader_module"),
                 source: wgpu::ShaderSource::Wgsl(asset_str!("shaders/globe.wgsl")),
             });
@@ -160,7 +158,7 @@ impl Globe {
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &shader_module,
-                    entry_point: "main",
+                    entry_point: "vs_main",
                     buffers: &[Vertex::buffer_layout()],
                 },
                 primitive: wgpu::PrimitiveState {
@@ -168,21 +166,22 @@ impl Globe {
                     strip_index_format: None,
                     front_face: wgpu::FrontFace::Cw,
                     cull_mode: None,
-                    clamp_depth: false,
                     polygon_mode: wgpu::PolygonMode::Fill,
                     conservative: false,
+                    unclipped_depth: false,
                 },
                 depth_stencil: None,
                 multisample: Default::default(),
                 fragment: Some(wgpu::FragmentState {
                     module: &shader_module,
-                    entry_point: "main",
-                    targets: &[wgpu::ColorTargetState {
+                    entry_point: "fs_main",
+                    targets: &[Some(wgpu::ColorTargetState {
                         format: gfx.render_format,
                         blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                         write_mask: wgpu::ColorWrites::ALL,
-                    }],
+                    })],
                 }),
+                multiview: None,
             });
 
         let vertex_buffer = gfx
@@ -236,6 +235,7 @@ impl Globe {
                 dimension: wgpu::TextureDimension::D2,
                 format: wgpu::TextureFormat::Rgba8UnormSrgb,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
             });
             gfx.queue.write_texture(
                 wgpu::ImageCopyTexture {
@@ -247,8 +247,8 @@ impl Globe {
                 &image,
                 wgpu::ImageDataLayout {
                     offset: 0,
-                    bytes_per_row: NonZeroU32::new(size.width * 4),
-                    rows_per_image: NonZeroU32::new(size.height),
+                    bytes_per_row: Some(size.width * 4),
+                    rows_per_image: Some(size.height),
                 },
                 size,
             );
@@ -333,14 +333,14 @@ impl Globe {
 
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Globe.render_pass"),
-            color_attachments: &[wgpu::RenderPassColorAttachment {
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: frame_view,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Load,
                     store: true,
                 },
-            }],
+            })],
             depth_stencil_attachment: None,
         });
 

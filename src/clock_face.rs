@@ -5,7 +5,6 @@ use chrono::{NaiveTime, Timelike};
 use once_cell::sync::Lazy;
 use std::convert::TryInto;
 use std::f32::consts::TAU;
-use std::num::NonZeroU32;
 use tiny_skia::{BlendMode, Color, LineCap, Paint, Path, PathBuilder, Pixmap, Stroke, Transform};
 use wgpu::util::DeviceExt;
 
@@ -249,10 +248,7 @@ impl ClockFace {
                         wgpu::BindGroupLayoutEntry {
                             binding: 1,
                             visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Sampler {
-                                comparison: false,
-                                filtering: true,
-                            },
+                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                             count: None,
                         },
                         wgpu::BindGroupLayoutEntry {
@@ -277,7 +273,7 @@ impl ClockFace {
 
         let shader_module = gfx
             .device
-            .create_shader_module(&wgpu::ShaderModuleDescriptor {
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("ClockFace.shader_module"),
                 source: wgpu::ShaderSource::Wgsl(asset_str!("shaders/clock_face.wgsl")),
             });
@@ -289,7 +285,7 @@ impl ClockFace {
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &shader_module,
-                    entry_point: "main",
+                    entry_point: "vs_main",
                     buffers: &[Vertex::buffer_layout()],
                 },
                 primitive: wgpu::PrimitiveState {
@@ -297,21 +293,22 @@ impl ClockFace {
                     strip_index_format: None,
                     front_face: wgpu::FrontFace::Cw,
                     cull_mode: None,
-                    clamp_depth: false,
                     polygon_mode: wgpu::PolygonMode::Fill,
                     conservative: false,
+                    unclipped_depth: false,
                 },
                 depth_stencil: None,
                 multisample: Default::default(),
                 fragment: Some(wgpu::FragmentState {
                     module: &shader_module,
-                    entry_point: "main",
-                    targets: &[wgpu::ColorTargetState {
+                    entry_point: "fs_main",
+                    targets: &[Some(wgpu::ColorTargetState {
                         format: gfx.render_format,
                         blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
                         write_mask: wgpu::ColorWrites::ALL,
-                    }],
+                    })],
                 }),
+                multiview: None,
             });
 
         let vertex_buffer = gfx
@@ -349,6 +346,7 @@ impl ClockFace {
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
             usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
         });
         let texture_view = texture.create_view(&Default::default());
         let renderer = Renderer::new(&config);
@@ -400,7 +398,7 @@ impl ClockFace {
             },
             bytemuck::cast_slice(pixmap.pixels()),
             wgpu::ImageDataLayout {
-                bytes_per_row: Some(NonZeroU32::new(pixmap.width() * 4).unwrap()),
+                bytes_per_row: Some(pixmap.width() * 4),
                 ..Default::default()
             },
             wgpu::Extent3d {
@@ -412,14 +410,14 @@ impl ClockFace {
 
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("ClockFace.render_pass"),
-            color_attachments: &[wgpu::RenderPassColorAttachment {
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: frame_view,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Load,
                     store: true,
                 },
-            }],
+            })],
             depth_stencil_attachment: None,
         });
 

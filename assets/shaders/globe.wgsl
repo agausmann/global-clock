@@ -1,49 +1,47 @@
-[[block]]
 struct Uniforms {
-    local_transform: mat4x4<f32>;
-    rotation: f32;
-    axial_tilt: f32;
-    min_latitude: f32;
-    max_latitude: f32;
-    deflection_point: vec2<f32>;
+    local_transform: mat4x4<f32>,
+    rotation: f32,
+    axial_tilt: f32,
+    min_latitude: f32,
+    max_latitude: f32,
+    deflection_point: vec2<f32>,
 };
 
-[[group(0), binding(0)]]
+@group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
-[[group(0), binding(1)]]
+@group(0) @binding(1)
 var globe_sampler: sampler;
-[[group(0), binding(2)]]
+@group(0) @binding(2)
 var globe_day_texture: texture_2d<f32>;
-[[group(0), binding(3)]]
+@group(0) @binding(3)
 var globe_night_texture: texture_2d<f32>;
 
-[[block]]
 struct Viewport {
-    proj: mat4x4<f32>;
+    proj: mat4x4<f32>,
 };
 
-[[group(1), binding(0)]]
+@group(1) @binding(0)
 var<uniform> viewport: Viewport;
 
 struct VertexInput {
-    [[location(0)]] position: vec2<f32>;
-    [[location(1)]] uv: vec2<f32>;
+    @location(0) position: vec2<f32>,
+    @location(1) uv: vec2<f32>,
 };
 
 struct VertexOutput {
-    [[builtin(position)]] position: vec4<f32>;
-    [[location(0)]] uv: vec2<f32>;
+    @builtin(position) position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
 };
 
-[[stage(vertex)]]
-fn main(in: VertexInput) -> VertexOutput {
+@vertex
+fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
     out.position = viewport.proj * uniforms.local_transform * vec4<f32>(in.position, 0.0, 1.0);
     out.uv = in.uv;
     return out;
 }
 
-var TAU: f32 = 6.283185;
+const TAU: f32 = 6.283185;
 
 fn lerp(factor: f32, a: f32, b: f32) -> f32 {
     return a * (1.0 - factor) + b * factor;
@@ -53,8 +51,8 @@ fn lerp4(factor: f32, a: vec4<f32>, b: vec4<f32>) -> vec4<f32> {
     return a * (1.0 - factor) + b * factor;
 }
 
-[[stage(fragment)]]
-fn main(in: VertexOutput) -> [[location(0)]] vec4<f32> {
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Map 0.0..1.0 to -1.0..1.0
     var x: f32 = in.uv.x * 2.0 - 1.0;
     // Map 0.0..1.0 to 1.0..-1.0

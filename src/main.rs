@@ -25,17 +25,23 @@ pub struct GraphicsContextInner {
     pub surface: wgpu::Surface,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
+    pub surface_caps: wgpu::SurfaceCapabilities,
     pub render_format: wgpu::TextureFormat,
 }
 
 impl GraphicsContextInner {
     async fn new(window: Window) -> anyhow::Result<Self> {
-        let instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
-        let surface = unsafe { instance.create_surface(&window) };
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::PRIMARY,
+            ..Default::default()
+        });
+        let surface =
+            unsafe { instance.create_surface(&window) }.context("failed to create surface")?;
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::default(),
                 compatible_surface: Some(&surface),
+                ..Default::default()
             })
             .await
             .context("failed to create adapter")?;
@@ -51,15 +57,20 @@ impl GraphicsContextInner {
             )
             .await?;
 
-        let render_format = surface
-            .get_preferred_format(&adapter)
-            .context("failed to select a render format")?;
+        let surface_caps = surface.get_capabilities(&adapter);
+        let render_format = surface_caps
+            .formats
+            .iter()
+            .copied()
+            .find(|f| f.is_srgb())
+            .unwrap_or(surface_caps.formats[0]);
 
         Ok(Self {
             window,
             surface,
             device,
             queue,
+            surface_caps,
             render_format,
         })
     }
@@ -98,8 +109,8 @@ impl App {
 
     fn redraw(&mut self) -> anyhow::Result<()> {
         let frame = loop {
-            match self.gfx.surface.get_current_frame() {
-                Ok(frame) => break frame.output,
+            match self.gfx.surface.get_current_texture() {
+                Ok(frame) => break frame,
                 Err(wgpu::SurfaceError::Lost) => {
                     self.reconfigure();
                 }
@@ -120,6 +131,7 @@ impl App {
         self.clock_face
             .draw(&mut encoder, &frame_view, &self.viewport);
         self.gfx.queue.submit([encoder.finish()]);
+        frame.present();
 
         Ok(())
     }
@@ -138,6 +150,8 @@ impl App {
                 width: self.gfx.window.inner_size().width,
                 height: self.gfx.window.inner_size().height,
                 present_mode: wgpu::PresentMode::Fifo,
+                alpha_mode: self.gfx.surface_caps.alpha_modes[0],
+                view_formats: vec![],
             },
         );
     }
@@ -157,6 +171,7 @@ fn main() -> anyhow::Result<()> {
         .build(&event_loop)?;
 
     let mut app = block_on(App::new(window))?;
+    app.reconfigure();
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::NewEvents(StartCause::Init) => {
